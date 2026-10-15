@@ -1,0 +1,52 @@
+[project]
+name = "activity-service"
+version = "1.0.0"
+description = "PROJECT_DESCRIPTION_PLACEHOLDER"
+readme = "README.md"
+requires-python = ">=3.12"
+
+dependencies = [
+    "python-dateutil==2.9.0",
+    "aiokafka==0.14.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.4",          # pinned to match itaap-python-utils (avoids resolver conflict)
+    "pytest-cov>=4.1.0",
+    "pytest-asyncio==0.24.0", # last version compatible with pytest 8.3.4
+    "pytest-mock>=3.14.0",
+    "coverage[toml]>=7.4.0",
+    "pylint>=3.0.0",
+    "behave>=1.2.6",
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["app"]
+
+[tool.uv]
+# Note: itaap-python-utils must be installed separately from Azure Artifacts
+# using --extra-index-url due to private registry requirements
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = [
+    "--verbose",
+    "--strict-markers",
+    "--tb=short",
+    "--cov=app",
+    "--cov-report=term-missing",
+    "--cov-report=xml:coverage.xml",
+    "--cov-report=html:htmlcov",
+]
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests",
+]

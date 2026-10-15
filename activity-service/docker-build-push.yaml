@@ -1,0 +1,51 @@
+parameters:
+  Registry: 'DOCKER_REGISTRY_PLACEHOLDER'
+  Namespace: 'EKS_DEPLOY_NAMESPACE_PLACEHOLDER'
+  ImageName: 'PROJECT_NAME_PLACEHOLDER'
+  AddImageTag: ''
+  Dockerfile: 'Dockerfile'
+
+steps:
+  - bash: |
+      if [ -z "$IMAGE_NAME" ]; then
+        echo "##vso[task.logissue type=warning;]Missing image name parameter \"ImageName\"". Using repo name
+        echo "##vso[task.setvariable variable=ImageName;]$(Build.Repository.Name)"
+      else
+        echo "##vso[task.setvariable variable=ImageName;]$IMAGE_NAME"
+      fi
+    env:
+      IMAGE_NAME: ${{ parameters.ImageName }}
+    displayName: Determine ImageName
+    condition: ne(variables['Build.Reason'], 'PullRequest')
+
+  - download: current
+
+  - script: |
+      export AWS_ACCESS_KEY_ID=$(AWS_ACCESS_KEY_ID)
+      export AWS_SECRET_ACCESS_KEY=$(AWS_SECRET_ACCESS_KEY)
+      aws ecr get-login-password --region AWS_REGION_PLACEHOLDER | docker login --username AWS --password-stdin DOCKER_REGISTRY_PLACEHOLDER
+    displayName: 'Login to AWS'
+
+  - task: Docker@2
+    condition: ne(variables['Build.Reason'], 'PullRequest')
+    displayName: Build docker image
+    inputs:
+      command: build
+      repository: ${{ parameters.Registry }}/${{ parameters.Namespace }}/$(ImageName)
+      Dockerfile: ${{ parameters.Dockerfile }}
+      tags: |
+        $(Build.SourceVersion)-$(Build.SourceBranchName)
+        latest-$(Build.SourceBranchName)
+        ${{ parameters.AddImageTag }}
+
+  - task: Docker@2
+    displayName: Push docker image to ${{ parameters.Registry }}
+    inputs:
+      command: push
+      repository: ${{ parameters.Registry }}/${{ parameters.Namespace }}/$(ImageName)
+      Dockerfile: ${{ parameters.Dockerfile }}
+      tags: |
+        $(Build.SourceVersion)-$(Build.SourceBranchName)
+        latest-$(Build.SourceBranchName)
+        ${{ parameters.AddImageTag }}
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))

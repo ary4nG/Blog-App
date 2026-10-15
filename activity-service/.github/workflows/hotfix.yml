@@ -1,0 +1,121 @@
+# ============================================================================
+# Utility Workflow: Create hotfix branch from a production release tag
+# ============================================================================
+#
+# PURPOSE:
+#   Automatically creates a hotfix/* branch from the latest (or specified)
+#   release tag. This eliminates manual git commands and ensures the hotfix
+#   starts from the exact code that was deployed to production.
+#
+# HOW TO USE:
+#   1. Go to Actions → "Create Hotfix Branch" workflow → Run workflow
+#   2. Select environment: prod (default) or acc
+#   3. Enter a descriptive hotfix name (e.g., fix-payment-timeout)
+#   4. Click "Run workflow"
+#
+# WHAT HAPPENS AFTER:
+#   - Developer pulls the created hotfix/* branch and commits the fix
+#   - Push to hotfix/* triggers build + deploy: Test → ACC → Prod (skipping Dev)
+#   - After Prod deployment, a PR is auto-created to merge the fix back to main
+#
+# NOTE: This workflow requires IT_EADI_API_MGMT_GIT_TOKEN secret with repo scope.
+# ============================================================================
+
+name: Create Hotfix Branch
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to hotfix (which release tag to branch from)'
+        required: true
+        default: 'prod'
+        type: choice
+        options:
+          - prod
+          - acc
+      hotfix_name:
+        description: 'Hotfix name (e.g., fix-payment-timeout). Spaces are auto-replaced with hyphens.'
+        required: true
+        default: 'fix-description-here'
+        type: string
+
+jobs:
+  create-hotfix-branch:
+    name: Create Hotfix Branch
+    runs-on: [self-hosted, linux, x64, philips-code-hub, ubuntu-latest]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.IT_EADI_API_MGMT_GIT_TOKEN }}
+
+      - name: Create hotfix branch from release tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.IT_EADI_API_MGMT_GIT_TOKEN }}
+        run: |
+          set -e
+
+          echo ""
+          echo "============================================"
+          echo "  HOTFIX BRANCH CREATION UTILITY"
+          echo "  Environment: ${{ inputs.environment }}"
+          echo "============================================"
+          echo ""
+
+          # Fetch all branches and tags
+          git fetch --all --tags --prune
+
+          ENV="${{ inputs.environment }}"
+
+          # Find the latest production environment tag
+          LATEST_TAG=$(git tag -l "prod/*" --sort=-version:refname | head -1)
+
+          if [ -z "$LATEST_TAG" ]; then
+            echo "  🚨 No production tags (prod/*) found in this repository."
+            echo "  Cannot create a hotfix branch without a production deployment tag."
+            echo ""
+            echo "  This means no deployment to production has been made yet via the CI pipeline."
+            echo "  If this is a new project, create the hotfix branch manually:"
+            echo "    git checkout -b hotfix/<name> main"
+            echo "============================================"
+            exit 1
+          fi
+          echo "  Latest production tag: $LATEST_TAG"
+
+          # Validate hotfix name
+          HOTFIX_NAME="${{ inputs.hotfix_name }}"
+          if [ -z "$HOTFIX_NAME" ] || [ "$HOTFIX_NAME" = "fix-description-here" ]; then
+            echo "  🚨 Please provide a descriptive hotfix name."
+            echo "============================================"
+            exit 1
+          fi
+
+          # Auto-replace spaces with hyphens
+          HOTFIX_NAME=$(echo "$HOTFIX_NAME" | tr ' ' '-')
+          BRANCH_NAME="hotfix/$HOTFIX_NAME"
+
+          # Check if branch already exists
+          if git ls-remote --heads origin "$BRANCH_NAME" | grep -q "$BRANCH_NAME"; then
+            echo "  🚨 Branch '$BRANCH_NAME' already exists."
+            echo "  Choose a different name or delete the existing branch."
+            echo "============================================"
+            exit 1
+          fi
+
+          # Create branch from the tag
+          echo "  Creating branch: $BRANCH_NAME from $LATEST_TAG"
+          git checkout -b "$BRANCH_NAME" "$LATEST_TAG"
+          git push origin "$BRANCH_NAME"
+
+          echo ""
+          echo "  ✅ Branch created successfully!"
+          echo ""
+          echo "  Next steps:"
+          echo "    1. git fetch --all"
+          echo "    2. git checkout $BRANCH_NAME"
+          echo "    3. Apply your fix, commit, and push"
+          echo "    4. Push triggers CI → Build → Deploy (Test → ACC → Prod)"
+          echo "    5. Auto-PR will merge fix back to main"
+          echo "============================================"

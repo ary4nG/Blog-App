@@ -1,0 +1,167 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: PROJECT_NAME_PLACEHOLDER
+  namespace: {{deployNamespace}}
+  labels:
+    app: PROJECT_NAME_PLACEHOLDER
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: PROJECT_NAME_PLACEHOLDER
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: PROJECT_NAME_PLACEHOLDER
+    spec:
+      containers:
+        - name: PROJECT_NAME_PLACEHOLDER-container
+          image: >-
+            DOCKER_REGISTRY_PLACEHOLDER/itaap/EKS_DEPLOY_NAMESPACE_PLACEHOLDER/PROJECT_NAME_PLACEHOLDER:{{imageTagName}}
+          ports:
+            - containerPort: 9000
+              protocol: TCP
+          env:
+            - name: LOG_LEVEL_APP
+              valueFrom:
+                configMapKeyRef:
+                  name: PROJECT_NAME_PLACEHOLDER
+                  key: LOG_LEVEL_APP
+            - name: APP_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: PROJECT_NAME_PLACEHOLDER
+                  key: APP_ENV
+            - name: APP_VERSION
+              valueFrom:
+                configMapKeyRef:
+                  name: PROJECT_NAME_PLACEHOLDER
+                  key: APP_VERSION
+            - name: ELASTICSEARCH_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: PROJECT_NAME_PLACEHOLDER
+                  key: ELASTICSEARCH_URL
+            - name: SEND_TELEMETRY_DATA
+              valueFrom:
+                configMapKeyRef:
+                  name: PROJECT_NAME_PLACEHOLDER
+                  key: SEND_TELEMETRY_DATA
+            - name: ELASTIC_INDEX_PREFIX
+              valueFrom:
+                configMapKeyRef:
+                  name: PROJECT_NAME_PLACEHOLDER
+                  key: ELASTIC_INDEX_PREFIX
+
+            - name: ELASTICSEARCH_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: PROJECT_NAME_PLACEHOLDER-secrets
+                  key: ELASTICSEARCH_USERNAME
+            - name: ELASTICSEARCH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: PROJECT_NAME_PLACEHOLDER-secrets
+                  key: ELASTICSEARCH_PASSWORD
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          imagePullPolicy: Always
+          resources:
+           requests:
+             memory: "256Mi"
+           limits:
+             memory: "512Mi"
+      nodeSelector:
+        kubernetes.io/os: linux
+        kubernetes.io/arch: amd64
+      restartPolicy: Always
+      schedulerName: default-scheduler
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 25%
+      maxSurge: 25%
+  revisionHistoryLimit: 10
+  progressDeadlineSeconds: 600
+
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: PROJECT_NAME_PLACEHOLDER-service
+  namespace: {{deployNamespace}}
+  labels:
+    app: PROJECT_NAME_PLACEHOLDER
+spec:
+  type: ClusterIP
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 9000
+  selector:
+    app: PROJECT_NAME_PLACEHOLDER
+
+---
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: PROJECT_NAME_PLACEHOLDER-ingress
+  annotations:
+    # nginx.ingress.kubernetes.io/auth-url: http://token-manage-service.itaap-{{env}}-common.svc.cluster.local/token/auth
+    # nginx.ingress.kubernetes.io/auth-response-headers: "authorization"
+    # nginx.ingress.kubernetes.io/auth-cache-key: '$http_authorization$request_uri'
+    nginx.ingress.kubernetes.io/auth-cache-duration: '5m'
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/rewrite-target: /PROJECT_NAME_PLACEHOLDER$1$2
+  namespace: {{deployNamespace}}
+spec:
+  defaultBackend:
+    service:
+      name: PROJECT_NAME_PLACEHOLDER-service
+      port:
+        number: 80
+  tls:
+    - hosts:
+        - {{host}}
+      secretName: itaap-tls-secret
+  rules:
+    - host: {{host}}
+      http:
+        paths:
+          - path: {{env_prefix_for_ingres}}/PROJECT_NAME_PLACEHOLDER(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: PROJECT_NAME_PLACEHOLDER-service
+                port:
+                  number: 80
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: PROJECT_NAME_PLACEHOLDER
+  namespace: {{deployNamespace}}
+data:
+  LOG_LEVEL_APP: "INFO"
+  APP_ENV: "{{app_env}}"
+  APP_VERSION: "{{app_version}}"
+  SEND_TELEMETRY_DATA: "SEND_TELEMETRY_DATA_PLACEHOLDER"
+  ELASTICSEARCH_URL: "{{elasticsearchUrl}}"
+  ELASTIC_INDEX_PREFIX: "PROJECT_NAME_PLACEHOLDER"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: PROJECT_NAME_PLACEHOLDER-secrets
+  namespace: {{deployNamespace}}
+type: Opaque
+data:
+  ELASTICSEARCH_USERNAME: "{{elasticsearchUsername}}" 
+  ELASTICSEARCH_PASSWORD: "{{elasticsearchPassword}}"

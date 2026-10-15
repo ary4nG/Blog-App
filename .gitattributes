@@ -1,0 +1,5 @@
+# Force shell scripts to keep LF line endings even when cloned on Windows.
+# Otherwise git may convert entrypoint.sh to CRLF, which breaks the container
+# ("#!/bin/sh\r: no such file or directory").
+*.sh text eol=lf
+entrypoint.sh text eol=lf

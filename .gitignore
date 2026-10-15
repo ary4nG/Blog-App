@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+venv/
+.venv/
+myenv/
+.pytest_cache/
+htmlcov/
+coverage.xml
+
+# Local env (compose provides all env vars — no .env needed to run)
+.env
+
+# OS
+.DS_Store
+Icon?

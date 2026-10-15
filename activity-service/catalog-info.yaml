@@ -1,0 +1,22 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: "PROJECT_NAME_PLACEHOLDER"
+  description: "PROJECT_NAME_PLACEHOLDER"
+  title: "COMPONENT_TITLE_PLACEHOLDER"
+  tags: ["python","itaap","fastapi"]
+  links:
+    - url: https://github.com/philips-internal/PROJECT_NAME_PLACEHOLDER/
+      title: Show me the code!
+      icon: chat
+  annotations:
+    github.com/project-slug: philips-internal/PROJECT_NAME_PLACEHOLDER
+    backstage.io/source-location: url:https://github.com/philips-internal/PROJECT_NAME_PLACEHOLDER/
+    github.com/team-slug: philips-internal/itaap_developers
+    philips.com/techdocs-builder: local
+    backstage.io/techdocs-ref: dir:.
+spec:
+  type: "service"
+  owner: "group:default/itaap_developers"
+  system: itaap_aws_microservice
+  lifecycle: "experimental"

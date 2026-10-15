@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: check out code
+        uses: actions/checkout@v4
+      - name: setup python on vm
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: installing ruff
+        run: pip install ruff
+      - name: lint blog app and activity service
+        run: ruff check blog_app activity-service --select E9,F63,F7,F82
+
+  test-blog-app:
+    runs-on: ubuntu-latest
+    steps:
+    - name: check out code
+      uses: actions/checkout@v4
+    - name: setup python on vm
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+    - name: install dependencies
+      run: pip install -r blog_app/requirements.txt
+
+    - name: run schema tests
+      working-directory: blog_app
+      env: 
+        DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/testdb
+        SECRET_KEY: xyzabc
+        ALGORITHM: HS256
+        ACCESS_TOKEN_EXPIRE_MINUTES: 30
+      run: pytest tests/ -v
+#testing out ci 
+  build-images:
+    runs-on: ubuntu-latest
+    steps:
+      - name: check out code
+        uses: actions/checkout@v4
+      - name: build images
+        run: docker compose build
+  

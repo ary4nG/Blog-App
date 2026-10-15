@@ -1,0 +1,152 @@
+name: Deploy To EKS
+
+on:
+  workflow_call:
+    inputs:
+      IMAGE_TAG:
+        description: image number that needs to be deployed
+        type: string
+        required: true
+      environmentName:
+        description: The environment name to use
+        type: string
+        required: true
+      namespace:
+        description: The namespace to deploy the image
+        type: string
+        required: true
+      clusterName:
+        description: Name of the EKS cluster
+        type: string
+        required: true
+      APP_VERSION:
+        description : Docker image version which will be used as APP_VERSION
+        required: true
+        type: string
+      envPrefixForIngres:
+        description : ingres path prefix
+        required: true
+        type: string
+      host:
+        description: itaap host name
+        required: true
+        type: string
+
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        description: AWS Access Key ID
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        description: AWS Access Key Secret
+        required: true
+      ELASTICSEARCH_USERNAME:
+        description: Elastic Search Username
+        required: true
+      ELASTICSEARCH_PASSWORD:
+        description: Elastic Search Password
+        required: true
+      GIT_TOKEN:
+        description: GitHub PAT for environment tagging
+        required: false
+
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/hotfix/')
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environmentName }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: 'AWS_REGION_PLACEHOLDER'
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v1
+        with:
+          version: 'latest'
+
+      - name: Deploy to EKS
+        run: |
+          aws eks --region AWS_REGION_PLACEHOLDER update-kubeconfig --name ${{ inputs.clusterName }}
+          imageTagName=$(echo ${{ inputs.IMAGE_TAG }})
+          echo "Image tag " $imageTagName
+
+          # Use the app_version passed from the build job
+          app_version="${{ inputs.APP_VERSION }}"
+          echo "Setting app_version to: $app_version"
+
+          # Use the environment name for app_env
+          app_env="${{ inputs.environmentName }}"
+          echo "Setting app_env to: $app_env"
+
+          env_prefix_for_ingres="${{ inputs.envPrefixForIngres }}"
+          echo "setting env_prefix_for_ingres to: $env_prefix_for_ingres"
+
+          # Determine which Elasticsearch URL to use based on environment
+          if [ "$app_env" = "dev" ] || [ "$app_env" = "test" ]; then
+            elasticsearch_url="${{ vars.ELASTICSEARCH_URL }}"
+            echo "Using dev/test Elasticsearch URL: $elasticsearch_url"
+          elif [ "$app_env" = "acc" ]; then
+            elasticsearch_url="${{ vars.ELASTICSEARCH_URL_ACC }}"
+            echo "Using acc Elasticsearch URL: $elasticsearch_url"
+          elif [ "$app_env" = "prod" ]; then
+            elasticsearch_url="${{ vars.ELASTICSEARCH_URL_PROD }}"
+            echo "Using prod Elasticsearch URL: $elasticsearch_url"
+          else
+            echo "Unknown environment: $app_env"
+            exit 1
+          fi
+
+          # Escape slashes for sed
+          # escaped_elasticsearch_url=$(echo "$elasticsearch_url" | sed 's/\//\\\//g')
+
+          # Base64 encode the credentials
+          elasticsearchUsername=$(echo -n "${{ secrets.ELASTICSEARCH_USERNAME }}" | base64)
+          elasticsearchPassword=$(echo -n "${{ secrets.ELASTICSEARCH_PASSWORD }}" | base64)
+
+          template=`cat eks-deployment.yaml | sed "s/{{imageTagName}}/$imageTagName/g" | sed "s/{{deployNamespace}}/${{ inputs.namespace }}/g" | sed "s/{{host}}/${{ inputs.host }}/g" \
+          | sed "s/{{elasticsearchUrl}}/$escaped_elasticsearch_url/g" \
+          | sed "s/{{elasticsearchUsername}}/$elasticsearchUsername/g" \
+          | sed "s/{{elasticsearchPassword}}/$elasticsearchPassword/g" \
+          | sed "s/{{app_version}}/$app_version/g" \
+          | sed "s/{{app_env}}/$app_env/g" \
+          | sed "s#{{env_prefix_for_ingres}}#$env_prefix_for_ingres#g"`
+
+          echo "$template" | kubectl apply -f -
+        working-directory: ./
+
+      - name: Create environment tag
+        if: inputs.environmentName == 'acc' || inputs.environmentName == 'prod'
+        env:
+          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
+        run: |
+          if [ -z "$GIT_TOKEN" ]; then
+            echo "GIT_TOKEN not provided, skipping environment tagging"
+            exit 0
+          fi
+
+          ENV_TAG="${{ inputs.environmentName }}/v${{ inputs.APP_VERSION }}"
+
+          echo "Creating environment tag: ${ENV_TAG}"
+
+          git config user.email "github-actions@philips.com"
+          git config user.name "GitHub Actions"
+
+          # Configure remote with token for push access
+          git remote set-url origin "https://x-access-token:${GIT_TOKEN}@github.com/${{ github.repository }}.git"
+
+          # Delete existing env tag for this version if it exists (re-deploy scenario)
+          git tag -d "${ENV_TAG}" 2>/dev/null || true
+          git push origin ":refs/tags/${ENV_TAG}" 2>/dev/null || true
+
+          git tag -a "${ENV_TAG}" -m "${{ inputs.environmentName }} deployment - v${{ inputs.APP_VERSION }}"
+          git push origin "${ENV_TAG}"
+
+          echo "Tagged ${{ inputs.environmentName }} deployment: ${ENV_TAG}"
